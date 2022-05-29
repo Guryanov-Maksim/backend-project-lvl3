@@ -15,5 +15,10 @@
   "bugs": {
     "url": "https://github.com/Guryanov-Maksim/backend-project-lvl3/issues"
   },
-  "homepage": "https://github.com/Guryanov-Maksim/backend-project-lvl3#readme"
+  "homepage": "https://github.com/Guryanov-Maksim/backend-project-lvl3#readme",
+  "devDependencies": {
+    "eslint": "^8.16.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.26.0"
+  }
 }
