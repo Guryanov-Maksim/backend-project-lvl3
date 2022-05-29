@@ -1,0 +1,19 @@
+{
+  "name": "@hexlet/code",
+  "version": "1.0.0",
+  "description": "page-loader cli",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Guryanov-Maksim/backend-project-lvl3.git"
+  },
+  "author": "Maksim Guryanov",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Guryanov-Maksim/backend-project-lvl3/issues"
+  },
+  "homepage": "https://github.com/Guryanov-Maksim/backend-project-lvl3#readme"
+}
