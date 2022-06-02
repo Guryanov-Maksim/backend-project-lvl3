@@ -1,34 +1,46 @@
 import axios from 'axios';
-import { fsPromise as fs } from 'fs/promises';
-/*  TODO
-*
-* 1. Load a page from the Internet
-* 2. Save a page content
-* 3. Return the path to the file with a saved content
-*
-*/
-const validate = (url) => url;
+import { writeFile } from 'fs/promises';
+import path from 'path';
+import * as yup from 'yup';
 
-const downloadPage = async (url) => {
-  const validUrl = validate(url);
-  const response = await axios.get(validUrl);
+const schema = yup.string().url();
+
+const validateUrl = (url) => schema.validateSync(url);
+
+const downloadPage = async (pageAddress) => {
+  const url = new URL(pageAddress);
+  const { origin, pathname } = url;
+  const response = await axios.get(pathname, { baseURL: origin });
   const { data } = response;
   return data;
 };
 
-const saveContent = async (fullPath, content) => {
-  await fs.writeFile(fullPath, content);
+const saveContent = (fullPath, content) => writeFile(fullPath, content);
+
+const createFileName = (pageAddress) => {
+  const extention = 'html';
+  const url = new URL(pageAddress);
+  const { hostname, pathname } = url;
+  const filteredHostname = hostname.split('.');
+  const filteredPathName = pathname.split('/').filter((page) => !!page);
+  const fileName = [
+    ...filteredHostname,
+    ...filteredPathName,
+  ].join('-');
+
+  return `${fileName}.${extention}`;
 };
 
-const loadPage = async (directoryPath, url) => {
-  const content = await downloadPage(url);
-  const fullPath = '';
+export default async (directoryPath, url) => {
   try {
+    const validUrl = validateUrl(url);
+    const fileNameForSaving = createFileName(validUrl);
+    const fullPath = path.join(directoryPath, fileNameForSaving);
+    const content = await downloadPage(validUrl);
     await saveContent(fullPath, content);
     return fullPath;
   } catch (e) {
     console.error(e);
+    return '';
   }
 };
-
-export default loadPage;
