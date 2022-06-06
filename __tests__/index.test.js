@@ -41,7 +41,7 @@ test('save page, valid address', async () => {
       'Content-Type': 'text/html',
     });
 
-  const pathToSavedPage = await loadPageAndGetSavedPagePath(tempDirectoryName, pageAddress);
+  const pathToSavedPage = await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
   const savedResult = fs.readFileSync(pathToSavedPage, 'utf-8');
   expect(pathToSavedPage).toEqual(expectedPathToSavedPage);
   expect(savedResult).toEqual(expectedResult);
