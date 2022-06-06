@@ -31,7 +31,7 @@ const createFileName = (pageAddress) => {
   return `${fileName}.${extention}`;
 };
 
-export default async (directoryPath, url) => {
+export default async (url, directoryPath) => {
   try {
     const validUrl = validateUrl(url);
     const fileNameForSaving = createFileName(validUrl);
