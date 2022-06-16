@@ -18,7 +18,10 @@ const __dirname = path.dirname(__filename);
 const getFixturePath = (filename) => path.join(__dirname, '..', '__fixtures__', filename);
 const readFile = (filename) => fs.readFileSync(getFixturePath(filename), 'utf-8');
 
-const expectedResult = readFile('test.html');
+const getAssetsPath = (filename) => path.join(__dirname, '..', '__fixtures__', 'assets', filename);
+const readAssetsFile = (filename) => fs.readFileSync(getAssetsPath(filename), 'utf-8');
+
+const expectedResult = readFile('expextedHtmlFile.html');
 
 let tempDirectoryName;
 
@@ -45,5 +48,36 @@ test('save page, valid address', async () => {
   const savedResult = fs.readFileSync(pathToSavedPage, 'utf-8');
   expect(pathToSavedPage).toEqual(expectedPathToSavedPage);
   expect(savedResult).toEqual(expectedResult);
+  scope.done();
+});
+
+test('save images, valid address', async () => {
+  const pageAddress = 'https://foo.baz/bar/qux';
+  const imagePath = '/assets/professions/nodejs.png';
+  const expectedHtmlFileName = 'foo-baz-bar-qux.html';
+  const expectedPathToSavedPage = [tempDirectoryName, expectedHtmlFileName].join('/');
+  const expectedImagePath = getAssetsPath('nodejs.png');
+  const savedAssetsDirectory = 'foo-baz_files';
+  const expectedFileName = 'foo-baz-assets-professions-nodejs.png';
+  const answer = readFile('testPageWithImg.html');
+  const expectedResultWihtImg = readFile('expextedPageWithImg.htm');
+  const expectedPathToSavedImage = [tempDirectoryName, savedAssetsDirectory, expectedFileName].join('/');
+  const { origin, pathname } = new URL(pageAddress);
+  const scope = nock(origin)
+    .get(pathname)
+    .reply(200, answer, {
+      'Content-Type': 'text/html',
+    })
+    .get(imagePath)
+    .replyWithFile(200, expectedImagePath, {
+      'Content-Type': 'image/png',
+    });
+
+  await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
+  const expectedImage = readAssetsFile('nodejs.png');
+  const resultHtml = fs.readFileSync(expectedPathToSavedPage, 'utf-8');
+  const savedImage = fs.readFileSync(expectedPathToSavedImage, 'utf-8');
+  expect(savedImage.toString('base64')).toEqual(expectedImage.toString('base64'));
+  expect(expectedResultWihtImg).toEqual(resultHtml);
   scope.done();
 });
