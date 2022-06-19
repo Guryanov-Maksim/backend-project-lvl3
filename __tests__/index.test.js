@@ -85,3 +85,85 @@ test('save images, valid address', async () => {
   expect(expectedResultWihtImg).toEqual(resultHtml);
   scope.done();
 });
+
+test('save css, img, js resources, valid address', async () => {
+  const pageAddress = 'https://foo.baz/bar/qux';
+  const savedAssetsDirectory = 'foo-baz_files';
+
+  const imagePath = '/assets/professions/nodejs.png';
+  const expectedImagePath = getAssetsPath('nodejs.png');
+  const expectedFileName = 'foo-baz-assets-professions-nodejs.png';
+  const expectedPathToSavedImage = path.join(
+    tempDirectoryName,
+    savedAssetsDirectory,
+    expectedFileName,
+  );
+  const expectedImage = readAssetsFile('nodejs.png');
+
+  const cssPath = '/assets/application.css';
+  const expectedCssPath = getAssetsPath('application.css');
+  const expectedCssFileName = 'foo-baz-assets-application.css';
+  const expectedPathToSavedCss = path.join(
+    tempDirectoryName,
+    savedAssetsDirectory,
+    expectedCssFileName,
+  );
+  const expectedCss = readAssetsFile('application.css');
+
+  const jsPath = '/packs/js/runtime.js';
+  const expectedJsPath = getAssetsPath('runtime.js');
+  const expectedJsFileName = 'foo-baz-packs-js-runtime.js';
+  const expectedPathToSavedJs = path.join(
+    tempDirectoryName,
+    savedAssetsDirectory,
+    expectedJsFileName,
+  );
+  const expectedJs = readAssetsFile('runtime.js');
+
+  const expectedHtmlFileName = 'foo-baz-bar-qux.html';
+  const expectedPathToSavedPage = path.join(tempDirectoryName, expectedHtmlFileName);
+  const expectedPathToSavedHtml = path.join(
+    tempDirectoryName,
+    savedAssetsDirectory,
+    expectedHtmlFileName,
+  );
+  const answer = readFile('testPageWithResourses.html');
+  const expectedResultWihtResources = readFile('expextedPageWithResources.html');
+
+  const { origin, pathname } = new URL(pageAddress);
+  const scope = nock(origin)
+    .get(pathname)
+    .reply(200, answer, {
+      'Content-Type': 'text/html',
+    })
+    .get(cssPath)
+    .replyWithFile(200, expectedCssPath, {
+      'Content-Type': 'text/css',
+    })
+    .get(pathname)
+    .reply(200, answer, {
+      'Content-Type': 'text/html',
+    })
+    .get(imagePath)
+    .replyWithFile(200, expectedImagePath, {
+      'Content-Type': 'image/png',
+    })
+    .get(jsPath)
+    .replyWithFile(200, expectedJsPath, {
+      'Content-Type': 'text/js',
+    });
+
+  await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
+
+  const resultHtml = fs.readFileSync(expectedPathToSavedPage, 'utf-8');
+  const savedImage = fs.readFileSync(expectedPathToSavedImage, 'utf-8');
+  const savedCssFile = fs.readFileSync(expectedPathToSavedCss, 'utf-8');
+  const savedJsFile = fs.readFileSync(expectedPathToSavedJs, 'utf-8');
+  const savedHtmlFile = fs.readFileSync(expectedPathToSavedHtml, 'utf-8');
+  expect(savedImage.toString('base64')).toEqual(expectedImage.toString('base64'));
+  expect(savedCssFile).toEqual(expectedCss);
+  expect(expectedJs).toEqual(savedJsFile);
+  expect(resultHtml).toEqual(expectedResultWihtResources);
+  expect(savedHtmlFile).toEqual(answer);
+  scope.done();
+});
