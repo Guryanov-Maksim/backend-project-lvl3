@@ -3,6 +3,10 @@ import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import * as yup from 'yup';
 import * as cheerio from 'cheerio';
+import 'axios-debug-log';
+import debug from 'debug';
+
+const logger = debug('page-loader');
 
 const schema = yup.string().url();
 
@@ -108,17 +112,22 @@ const downloadPage = async (url) => {
 
 export default async (pageAddress, directoryPath) => {
   try {
+    logger('The application is running');
     const validPageAddress = validateUrl(pageAddress);
     const pageUrl = new URL(validPageAddress);
+
+    logger('Page loading started');
+    const pageContent = await downloadPage(pageUrl);
+    logger('Page loaded successfully');
+
+    const dom = cheerio.load(pageContent);
     const nameBasePart = pageUrl.hostname.split('.').join('-');
     const htmlFilename = createResourceName(pageUrl, nameBasePart);
     const pathToSavedHtmlFile = path.join(directoryPath, htmlFilename);
     const resoursesDirectory = `${nameBasePart}_files`;
     const resourceDirectoryPath = path.join(directoryPath, resoursesDirectory);
     await mkdir(resourceDirectoryPath);
-
-    const pageContent = await downloadPage(pageUrl);
-    const dom = cheerio.load(pageContent);
+    logger('Directory for the assets created');
 
     const resoursesData = prepareResourcesData(
       dom,
@@ -126,15 +135,20 @@ export default async (pageAddress, directoryPath) => {
       nameBasePart,
       resoursesDirectory,
     );
+    logger('Assets loading started');
     const resources = await downloadResourses(resoursesData);
+    logger('Assets loading complited');
     const changedDom = getReplacedDom(dom, resources, pageUrl.origin);
     // console.log(changedDom.html());
+    logger('Assets saving is in the progress');
     await saveContent(pathToSavedHtmlFile, changedDom.html());
     const resourcePromises = resources.map(({ resourcePath, content }) => {
       const fullPath = path.join(directoryPath, resourcePath);
       return saveContent(fullPath, content);
     });
     await Promise.all(resourcePromises);
+    logger('Assets saved successfully');
+    logger('The application finished');
     return pathToSavedHtmlFile;
   } catch (e) {
     console.error(e);
