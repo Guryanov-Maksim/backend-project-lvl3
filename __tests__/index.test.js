@@ -55,13 +55,17 @@ test('save images, valid address', async () => {
   const pageAddress = 'https://foo.baz/bar/qux';
   const imagePath = '/assets/professions/nodejs.png';
   const expectedHtmlFileName = 'foo-baz-bar-qux.html';
-  const expectedPathToSavedPage = [tempDirectoryName, expectedHtmlFileName].join('/');
+  const expectedPathToSavedPage = path.join(tempDirectoryName, expectedHtmlFileName);
   const expectedImagePath = getAssetsPath('nodejs.png');
   const savedAssetsDirectory = 'foo-baz_files';
   const expectedFileName = 'foo-baz-assets-professions-nodejs.png';
   const answer = readFile('testPageWithImg.html');
   const expectedResultWihtImg = readFile('expextedPageWithImg.htm');
-  const expectedPathToSavedImage = [tempDirectoryName, savedAssetsDirectory, expectedFileName].join('/');
+  const expectedPathToSavedImage = path.join(
+    tempDirectoryName,
+    savedAssetsDirectory,
+    expectedFileName,
+  );
   const { origin, pathname } = new URL(pageAddress);
   const scope = nock(origin)
     .get(pathname)
