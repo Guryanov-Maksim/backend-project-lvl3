@@ -7,7 +7,12 @@ import {
 import url from 'url';
 import path from 'path';
 import fs from 'fs';
-import { mkdtemp, rmdir } from 'fs/promises';
+import {
+  mkdtemp,
+  rmdir,
+  chmod,
+  writeFile,
+} from 'fs/promises';
 import os from 'os';
 import nock from 'nock';
 
@@ -166,4 +171,103 @@ test('save css, img, js resources, valid address', async () => {
   expect(resultHtml).toEqual(expectedResultWihtResources);
   expect(savedHtmlFile).toEqual(answer);
   scope.done();
+});
+
+test('directory is not exist', async () => {
+  const notExistDirectory = '/notExistDirectory';
+  const expectedErrorMessage = `Directory ${notExistDirectory} doesn't exist`;
+
+  const pageAddress = 'https://foo.baz/bar/qux';
+  const { origin, pathname } = new URL(pageAddress);
+  nock(origin)
+    .get(pathname)
+    .reply(200, expectedResult, {
+      'Content-Type': 'text/html',
+    });
+
+  expect.assertions(1);
+  try {
+    await loadPageAndGetSavedPagePath(pageAddress, '/notExistDirectory');
+  } catch (e) {
+    expect(e.message).toMatch(expectedErrorMessage);
+  }
+});
+
+test('No access', async () => {
+  const pageAddress = 'https://foo.baz/bar/qux';
+  await chmod(tempDirectoryName, '100'); // only read
+  const expectedErrorMessage = `No access to write in ${tempDirectoryName}`;
+  const { origin, pathname } = new URL(pageAddress);
+  nock(origin)
+    .get(pathname)
+    .reply(200, expectedResult, {
+      'Content-Type': 'text/html',
+    });
+
+  expect.assertions(1);
+  try {
+    await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
+  } catch (e) {
+    expect(e.message).toMatch(expectedErrorMessage);
+  }
+});
+
+test('Write in a file instead of a directory', async () => {
+  const filename = 'filename.js';
+  const pathToFile = path.join(tempDirectoryName, filename);
+  await writeFile(pathToFile, ''); // create an empty file to try to write into it
+  const expectedErrorMessage = `${pathToFile} is not a directory`;
+
+  const pageAddress = 'https://foo.baz/bar/qux';
+  const { origin, pathname } = new URL(pageAddress);
+  nock(origin)
+    .get(pathname)
+    .reply(200, expectedResult, {
+      'Content-Type': 'text/html',
+    });
+
+  expect.assertions(1);
+  try {
+    await loadPageAndGetSavedPagePath(pageAddress, pathToFile);
+  } catch (e) {
+    expect(e.message).toMatch(expectedErrorMessage);
+  }
+});
+
+test('invalid page address', async () => {
+  const pageAddress = 'invalidUrl.invalid';
+  const expectedErrorMessage = `Error: ${pageAddress} must be a valid URL`;
+
+  expect.assertions(1);
+  try {
+    await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
+  } catch (e) {
+    expect(e.message).toMatch(expectedErrorMessage);
+  }
+});
+
+test('cannot download assets', async () => {
+  const pageAddress = 'https://foo.baz/bar/qux';
+  const imagePath = '/assets/professions/nodejs.png';
+  const notFoundCode = 404;
+  const answer = readFile('testPageWithImg.html');
+  const { origin, pathname } = new URL(pageAddress);
+
+  nock(origin)
+    .get(pathname)
+    .reply(200, answer, {
+      'Content-Type': 'text/html',
+    })
+    .get(imagePath)
+    .reply(notFoundCode);
+
+  const requestedResourceUrl = `${origin}${imagePath}`;
+  const expectedErrorMessage = `Request to ${requestedResourceUrl} failed with status code ${notFoundCode}`;
+
+  expect.assertions(1);
+  try {
+    await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
+  } catch (e) {
+    expect(e.message).toMatch(expectedErrorMessage);
+  }
 });
