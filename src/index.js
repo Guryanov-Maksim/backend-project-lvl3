@@ -1,11 +1,17 @@
 import axios from 'axios';
-import { writeFile, mkdir, access } from 'fs/promises';
+import {
+  writeFile,
+  mkdir,
+  access,
+  rmdir,
+} from 'fs/promises';
 import path from 'path';
 import * as yup from 'yup';
 import * as cheerio from 'cheerio';
 import 'axios-debug-log';
 import debug from 'debug';
 import fs from 'fs';
+import Listr from 'listr';
 
 const logger = debug('page-loader');
 
@@ -44,6 +50,7 @@ const createResourceName = (resourceUrl, nameBasePart) => {
 const resoursesTags = 'script, img, link';
 
 const prepareResourcesData = (dom, base, nameBasePart, resourcesDirectory) => {
+  // subdomains isn't loaded. It needs to fix it!!!!!!!!!
   const resourcesData = [];
   dom(resoursesTags).each((i, element) => {
     const tagName = element.name;
@@ -52,6 +59,7 @@ const prepareResourcesData = (dom, base, nameBasePart, resourcesDirectory) => {
       id: i,
       tagName,
       url: new URL(resoursePathname, base),
+      inline: !resoursePathname,
     };
     resourcesData.push(resourceInfo);
   });
@@ -61,7 +69,7 @@ const prepareResourcesData = (dom, base, nameBasePart, resourcesDirectory) => {
       const resourcePath = path.join(resourcesDirectory, resourceFileName);
       return { ...resourceInfo, resourcePath };
     })
-    .filter(({ url }) => url.origin === base);
+    .filter(({ inline, url }) => url.origin === base && !inline);
   return preparedData;
 };
 
@@ -72,8 +80,10 @@ const getReplacedDom = (dom, resources, base) => {
     if (isCrossOrigin(oldPath, base)) {
       return;
     }
-    const { resourcePath } = resources.find((resource) => resource.id === i);
-    setResoursePath(dom(element), resourcePath, element.name);
+    const foundResource = resources.find((resource) => resource.id === i);
+    if (foundResource) {
+      setResoursePath(dom(element), foundResource.resourcePath, element.name);
+    }
   });
   return dom;
 };
@@ -90,20 +100,36 @@ const getReplacedDom = (dom, resources, base) => {
 
 const isImageRequested = (tagName) => tagName === 'img';
 
+const requestData = (url, tagName) => {
+  if (isImageRequested(tagName)) {
+    return axios.get(url.toString(), { responseType: 'stream' });
+  }
+  return axios.get(url.toString());
+};
+
 const downloadResourses = async (resoursesData) => {
   try {
-    const promises = resoursesData.map(({ tagName, url }) => {
-      if (isImageRequested(tagName)) {
-        return axios.get(url.toString(), { responseType: 'stream' });
-      }
-      return axios.get(url.toString());
+    const resources = [];
+    const preparedTasks = resoursesData.map((resourceData) => {
+      const { tagName, url } = resourceData;
+      const promise = requestData(url, tagName);
+      return {
+        title: `${url.toString()} is downloading`,
+        task: (ctx, task) => promise
+          .then(({ data }) => {
+            const resource = { ...resourceData, data };
+            task.title = `${url.toString()} downloaded successfully`; // eslint-disable-line
+            resources.push(resource);
+          })
+          .catch((error) => {
+            task.title = `${url.toString()} downloading failed`; // eslint-disable-line
+            throw (error);
+          }),
+      };
     });
-    const responses = await Promise.all(promises);
-    const resourses = resoursesData.map((resourceData, index) => {
-      const { data } = responses[index];
-      return { ...resourceData, content: data };
-    });
-    return resourses;
+    const tasks = new Listr(preparedTasks, { concurrent: true });
+    await tasks.run();
+    return resources;
   } catch (error) {
     logger('The following error was thrown %O', error);
     if (error.isAxiosError) {
@@ -157,7 +183,7 @@ const makeAssetsDirectory = async (resoursesDirectory, directoryPath) => {
 
     const resourceDirectoryPath = path.join(directoryPath, resoursesDirectory);
     if (isDirectoryExist(resourceDirectoryPath)) {
-      fs.rmdir(resourceDirectoryPath, { recursive: true }, () => {});
+      await rmdir(resourceDirectoryPath, { recursive: true });
     }
     await mkdir(resourceDirectoryPath);
     return true;
@@ -192,6 +218,7 @@ export default async (pageAddress, directoryPath) => {
     nameBasePart,
     resoursesDirectory,
   );
+
   logger('Assets loading started');
   const resources = await downloadResourses(resoursesData);
   logger('Assets loading complited');
@@ -199,9 +226,10 @@ export default async (pageAddress, directoryPath) => {
   // console.log(changedDom.html());
   logger('Assets saving is in the progress');
   await saveContent(pathToSavedHtmlFile, changedDom.html());
-  const resourcePromises = resources.map(({ resourcePath, content }) => {
+  const resourcePromises = resources.map((resource) => {
+    const { resourcePath, data } = resource;
     const fullPath = path.join(directoryPath, resourcePath);
-    return saveContent(fullPath, content);
+    return saveContent(fullPath, data);
   });
   await Promise.all(resourcePromises);
   logger('Assets saved successfully');
