@@ -9,9 +9,15 @@ program
   .argument('<url>', 'a page address that will be used to download the page html')
   .option('-o, --output [dir]', 'output dir', process.cwd())
   .action(async (url) => {
-    const { output } = program.opts();
-    const savedPagePath = await loadPageAndGetSavedPagePath(url, output);
-    console.log(savedPagePath);
+    try {
+      const { output } = program.opts();
+      const savedPagePath = await loadPageAndGetSavedPagePath(url, output);
+      console.log(`Page was successfully downloaded into ${savedPagePath}`);
+    } catch (error) {
+      const failedAddCode = 1;
+      console.error(error.message);
+      process.exit(failedAddCode);
+    }
   });
 
 await program.parseAsync();

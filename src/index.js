@@ -1,16 +1,19 @@
 import axios from 'axios';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, access } from 'fs/promises';
 import path from 'path';
 import * as yup from 'yup';
 import * as cheerio from 'cheerio';
 import 'axios-debug-log';
 import debug from 'debug';
+import fs from 'fs';
 
 const logger = debug('page-loader');
 
 const schema = yup.string().url();
 
-const validateUrl = (url) => schema.validateSync(url);
+const validateUrl = (url) => schema.validate(url).catch(() => {
+  throw Error(`Error: ${url.toString()} must be a valid URL`);
+});
 
 const mapping = {
   link: 'href',
@@ -88,21 +91,37 @@ const getReplacedDom = (dom, resources, base) => {
 const isImageRequested = (tagName) => tagName === 'img';
 
 const downloadResourses = async (resoursesData) => {
-  const promises = resoursesData.map(({ tagName, url }) => {
-    if (isImageRequested(tagName)) {
-      return axios.get(url.toString(), { responseType: 'stream' });
+  try {
+    const promises = resoursesData.map(({ tagName, url }) => {
+      if (isImageRequested(tagName)) {
+        return axios.get(url.toString(), { responseType: 'stream' });
+      }
+      return axios.get(url.toString());
+    });
+    const responses = await Promise.all(promises);
+    const resourses = resoursesData.map((resourceData, index) => {
+      const { data } = responses[index];
+      return { ...resourceData, content: data };
+    });
+    return resourses;
+  } catch (error) {
+    logger('The following error was thrown %O', error);
+    if (error.isAxiosError) {
+      const message = `Error: Request to ${error.config.url} failed with status code ${error.response.status}`;
+      throw Error(message);
     }
-    return axios.get(url.toString());
-  });
-  const responses = await Promise.all(promises);
-  const resourses = resoursesData.map((resourceData, index) => {
-    const { data } = responses[index];
-    return { ...resourceData, content: data };
-  });
-  return resourses;
+    throw Error('Error: Unprocessed error occurred. Please, run the application with debug for more information');
+  }
 };
 
-const saveContent = (fullPath, content) => writeFile(fullPath, content);
+const saveContent = (fullPath, content) => {
+  try {
+    return writeFile(fullPath, content);
+  } catch (error) {
+    logger('The following error was thrown: %O', error);
+    throw Error('Error: Unprocessed error occurred. Please, run the application with debug for more information');
+  }
+};
 
 const downloadPage = async (url) => {
   const response = await axios.get(url.toString());
@@ -110,48 +129,83 @@ const downloadPage = async (url) => {
   return data;
 };
 
-export default async (pageAddress, directoryPath) => {
+const isDirectoryExist = (directoryPath) => {
   try {
-    logger('The application is running');
-    const validPageAddress = validateUrl(pageAddress);
-    const pageUrl = new URL(validPageAddress);
-
-    logger('Page loading started');
-    const pageContent = await downloadPage(pageUrl);
-    logger('Page loaded successfully');
-
-    const dom = cheerio.load(pageContent);
-    const nameBasePart = pageUrl.hostname.split('.').join('-');
-    const htmlFilename = createResourceName(pageUrl, nameBasePart);
-    const pathToSavedHtmlFile = path.join(directoryPath, htmlFilename);
-    const resoursesDirectory = `${nameBasePart}_files`;
-    const resourceDirectoryPath = path.join(directoryPath, resoursesDirectory);
-    await mkdir(resourceDirectoryPath);
-    logger('Directory for the assets created');
-
-    const resoursesData = prepareResourcesData(
-      dom,
-      pageUrl.origin,
-      nameBasePart,
-      resoursesDirectory,
-    );
-    logger('Assets loading started');
-    const resources = await downloadResourses(resoursesData);
-    logger('Assets loading complited');
-    const changedDom = getReplacedDom(dom, resources, pageUrl.origin);
-    // console.log(changedDom.html());
-    logger('Assets saving is in the progress');
-    await saveContent(pathToSavedHtmlFile, changedDom.html());
-    const resourcePromises = resources.map(({ resourcePath, content }) => {
-      const fullPath = path.join(directoryPath, resourcePath);
-      return saveContent(fullPath, content);
-    });
-    await Promise.all(resourcePromises);
-    logger('Assets saved successfully');
-    logger('The application finished');
-    return pathToSavedHtmlFile;
-  } catch (e) {
-    console.error(e);
-    return '';
+    fs.accessSync(directoryPath);
+    return true;
+  } catch {
+    return false;
   }
+};
+
+const makeErrorMessage = (error, directoryPath) => {
+  switch (error.code) {
+    case 'ENOENT':
+      return `Error: Directory ${directoryPath} doesn't exist`;
+    case 'EACCES':
+      return `Error: No access to write in ${directoryPath}`;
+    case 'ENOTDIR':
+      return `Error: ${directoryPath} is not a directory`;
+    default:
+      return 'Error: Unprocessed error occurred. Please, run the application with debug for more information';
+  }
+};
+
+const makeAssetsDirectory = async (resoursesDirectory, directoryPath) => {
+  try {
+    await access(directoryPath);
+
+    const resourceDirectoryPath = path.join(directoryPath, resoursesDirectory);
+    if (isDirectoryExist(resourceDirectoryPath)) {
+      fs.rmdir(resourceDirectoryPath, { recursive: true }, () => {});
+    }
+    await mkdir(resourceDirectoryPath);
+    return true;
+  } catch (error) {
+    logger('The following error was thrown: %O', error);
+    const message = makeErrorMessage(error, directoryPath);
+    throw Error(message);
+  }
+};
+
+export default async (pageAddress, directoryPath) => {
+  logger('The application is running');
+  const validPageAddress = await validateUrl(pageAddress);
+  const pageUrl = new URL(validPageAddress);
+
+  logger('Page loading started');
+  const pageContent = await downloadPage(pageUrl);
+  logger('Page loaded successfully');
+
+  const nameBasePart = pageUrl.hostname.split('.').join('-');
+  const htmlFilename = createResourceName(pageUrl, nameBasePart);
+  const pathToSavedHtmlFile = path.join(directoryPath, htmlFilename);
+  const resoursesDirectory = `${nameBasePart}_files`;
+  await makeAssetsDirectory(resoursesDirectory, directoryPath);
+  logger('Directory for the assets created');
+
+  const dom = cheerio.load(pageContent);
+  // hide a dom inside prepareResoucesData and getReplacedDom
+  const resoursesData = prepareResourcesData(
+    dom,
+    pageUrl.origin,
+    nameBasePart,
+    resoursesDirectory,
+  );
+  logger('Assets loading started');
+  const resources = await downloadResourses(resoursesData);
+  logger('Assets loading complited');
+  const changedDom = getReplacedDom(dom, resources, pageUrl.origin);
+  // console.log(changedDom.html());
+  logger('Assets saving is in the progress');
+  await saveContent(pathToSavedHtmlFile, changedDom.html());
+  const resourcePromises = resources.map(({ resourcePath, content }) => {
+    const fullPath = path.join(directoryPath, resourcePath);
+    return saveContent(fullPath, content);
+  });
+  await Promise.all(resourcePromises);
+  logger('Assets saved successfully');
+  logger('The application finished');
+
+  return pathToSavedHtmlFile;
 };
