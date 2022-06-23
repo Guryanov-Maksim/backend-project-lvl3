@@ -13,10 +13,12 @@ program
       const { output } = program.opts();
       const savedPagePath = await loadPageAndGetSavedPagePath(url, output);
       console.log(`Page was successfully downloaded into ${savedPagePath}`);
+      const successAppCode = 0;
+      process.exit(successAppCode);
     } catch (error) {
-      const failedAddCode = 1;
+      const failedAppCode = 1;
       console.error(error.message);
-      process.exit(failedAddCode);
+      process.exit(failedAppCode);
     }
   });
 

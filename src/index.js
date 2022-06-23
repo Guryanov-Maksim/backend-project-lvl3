@@ -1,239 +1,75 @@
-import axios from 'axios';
 import {
-  writeFile,
-  mkdir,
-  access,
-  rmdir,
-} from 'fs/promises';
-import path from 'path';
-import * as yup from 'yup';
-import * as cheerio from 'cheerio';
-import 'axios-debug-log';
-import debug from 'debug';
-import fs from 'fs';
-import Listr from 'listr';
+  validateUrl,
+  prepareResourcesData,
+  makeAssetsDirectory,
+  downloadResourses,
+  saveContent,
+  logger,
+  downloadContent,
+} from './helpers';
 
-const logger = debug('page-loader');
+/* *********************************
+Баг в том, что когда запускаешь дебагеры page-loader и axios одновременно,
+то строки с зарузкой статики появляются по два раза и одна из них не завершается,
+хотя все скачивается и сохраняется.
+По отдельности дебагеры работают нормально.
+Как устанить пока не понятно.
 
-const schema = yup.string().url();
+DEBUG=page-loader,axios page-loader https://ru.hexlet.io/courses
 
-const validateUrl = (url) => schema.validate(url).catch(() => {
-  throw Error(`Error: ${url.toString()} must be a valid URL`);
-});
+page-loader The application is running +0ms
+page-loader Page loading started +8ms
+axios GET https://ru.hexlet.io/courses +0ms
+axios 200 OK (GET https://ru.hexlet.io/courses) +1s
+page-loader Page loaded successfully +1s
+page-loader Directory for the assets created +235ms
+page-loader Assets loading started +0ms
+axios GET https://ru.hexlet.io/lessons.rss +239ms
+axios GET https://ru.hexlet.io/courses +1ms
+⠼ https://ru.hexlet.io/lessons.rss is downloading
+✔ https://ru.hexlet.io/lessons.rss downloaded successfully
+✔ https://ru.hexlet.io/lessons.rss downloaded successfully
+✔ https://ru.hexlet.io/courses downloaded successfully
+page-loader Assets loading complited +1s
+page-loader Assets saving is in the progress +0ms
+page-loader Assets saved successfully +16ms
+page-loader The application finished +0ms
+Page was successfully downloaded into /ru-hexlet-io-courses.html
+*/
 
-const mapping = {
-  link: 'href',
-  script: 'src',
-  img: 'src',
-};
-
-const getResoursePath = (element, elementName) => element.attr(mapping[elementName]);
-
-const setResoursePath = (element, newPath, elementName) => {
-  element.attr(mapping[elementName], newPath);
-};
-
-const isCrossOrigin = (resourcePath, base) => {
-  const url = new URL(resourcePath, base);
-  return url.origin !== base;
-};
-
-const createResourceName = (resourceUrl, nameBasePart) => {
-  const [resourseName, extention = 'html'] = resourceUrl.pathname.split('.');
-  const filteredPath = resourseName
-    .split('/')
-    .filter((pathPart) => !!pathPart)
-    .join('-');
-  return `${nameBasePart}-${filteredPath}.${extention}`;
-};
-
-const resoursesTags = 'script, img, link';
-
-const prepareResourcesData = (dom, base, nameBasePart, resourcesDirectory) => {
-  // subdomains isn't loaded. It needs to fix it!!!!!!!!!
-  const resourcesData = [];
-  dom(resoursesTags).each((i, element) => {
-    const tagName = element.name;
-    const resoursePathname = getResoursePath(dom(element), element.name);
-    const resourceInfo = {
-      id: i,
-      tagName,
-      url: new URL(resoursePathname, base),
-      inline: !resoursePathname,
-    };
-    resourcesData.push(resourceInfo);
-  });
-  const preparedData = resourcesData
-    .map((resourceInfo) => {
-      const resourceFileName = createResourceName(resourceInfo.url, nameBasePart);
-      const resourcePath = path.join(resourcesDirectory, resourceFileName);
-      return { ...resourceInfo, resourcePath };
+export default async (pageAddress, directoryPath) => (
+  Promise.resolve(logger('The application is running'))
+    .then(() => validateUrl(pageAddress))
+    .then((validPageAddress) => {
+      logger('Page loading started');
+      const pageUrl = new URL(validPageAddress);
+      return downloadContent(pageUrl)
+        .then(({ data }) => ({ pageUrl, pageContent: data }));
     })
-    .filter(({ inline, url }) => url.origin === base && !inline);
-  return preparedData;
-};
-
-const getReplacedDom = (dom, resources, base) => {
-  // need to crate a deep clone of the dom parameter to make this funtion clear
-  dom(resoursesTags).each((i, element) => {
-    const oldPath = getResoursePath(dom(element), element.name);
-    if (isCrossOrigin(oldPath, base)) {
-      return;
-    }
-    const foundResource = resources.find((resource) => resource.id === i);
-    if (foundResource) {
-      setResoursePath(dom(element), foundResource.resourcePath, element.name);
-    }
-  });
-  return dom;
-};
-
-// GET request for remote image in node.js
-// axios({
-//   method: 'get',
-//   url: 'https://bit.ly/2mTM3nY',
-//   responseType: 'stream'
-// })
-//   .then(function (response) {
-//     response.data.pipe(fs.createWriteStream('ada_lovelace.jpg'))
-//   });
-
-const isImageRequested = (tagName) => tagName === 'img';
-
-const requestData = (url, tagName) => {
-  if (isImageRequested(tagName)) {
-    return axios.get(url.toString(), { responseType: 'stream' });
-  }
-  return axios.get(url.toString());
-};
-
-const downloadResourses = async (resoursesData) => {
-  try {
-    const resources = [];
-    const preparedTasks = resoursesData.map((resourceData) => {
-      const { tagName, url } = resourceData;
-      const promise = requestData(url, tagName);
-      return {
-        title: `${url.toString()} is downloading`,
-        task: (ctx, task) => promise
-          .then(({ data }) => {
-            const resource = { ...resourceData, data };
-            task.title = `${url.toString()} downloaded successfully`; // eslint-disable-line
-            resources.push(resource);
-          })
-          .catch((error) => {
-            task.title = `${url.toString()} downloading failed`; // eslint-disable-line
-            throw (error);
-          }),
-      };
-    });
-    const tasks = new Listr(preparedTasks, { concurrent: true });
-    await tasks.run();
-    return resources;
-  } catch (error) {
-    logger('The following error was thrown %O', error);
-    if (error.isAxiosError) {
-      const message = `Error: Request to ${error.config.url} failed with status code ${error.response.status}`;
-      throw Error(message);
-    }
-    throw Error('Error: Unprocessed error occurred. Please, run the application with debug for more information');
-  }
-};
-
-const saveContent = (fullPath, content) => {
-  try {
-    return writeFile(fullPath, content);
-  } catch (error) {
-    logger('The following error was thrown: %O', error);
-    throw Error('Error: Unprocessed error occurred. Please, run the application with debug for more information');
-  }
-};
-
-const downloadPage = async (url) => {
-  const response = await axios.get(url.toString());
-  const { data } = response;
-  return data;
-};
-
-const isDirectoryExist = (directoryPath) => {
-  try {
-    fs.accessSync(directoryPath);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const makeErrorMessage = (error, directoryPath) => {
-  switch (error.code) {
-    case 'ENOENT':
-      return `Error: Directory ${directoryPath} doesn't exist`;
-    case 'EACCES':
-      return `Error: No access to write in ${directoryPath}`;
-    case 'ENOTDIR':
-      return `Error: ${directoryPath} is not a directory`;
-    default:
-      return 'Error: Unprocessed error occurred. Please, run the application with debug for more information';
-  }
-};
-
-const makeAssetsDirectory = async (resoursesDirectory, directoryPath) => {
-  try {
-    await access(directoryPath);
-
-    const resourceDirectoryPath = path.join(directoryPath, resoursesDirectory);
-    if (isDirectoryExist(resourceDirectoryPath)) {
-      await rmdir(resourceDirectoryPath, { recursive: true });
-    }
-    await mkdir(resourceDirectoryPath);
-    return true;
-  } catch (error) {
-    logger('The following error was thrown: %O', error);
-    const message = makeErrorMessage(error, directoryPath);
-    throw Error(message);
-  }
-};
-
-export default async (pageAddress, directoryPath) => {
-  logger('The application is running');
-  const validPageAddress = await validateUrl(pageAddress);
-  const pageUrl = new URL(validPageAddress);
-
-  logger('Page loading started');
-  const pageContent = await downloadPage(pageUrl);
-  logger('Page loaded successfully');
-
-  const nameBasePart = pageUrl.hostname.split('.').join('-');
-  const htmlFilename = createResourceName(pageUrl, nameBasePart);
-  const pathToSavedHtmlFile = path.join(directoryPath, htmlFilename);
-  const resoursesDirectory = `${nameBasePart}_files`;
-  await makeAssetsDirectory(resoursesDirectory, directoryPath);
-  logger('Directory for the assets created');
-
-  const dom = cheerio.load(pageContent);
-  // hide a dom inside prepareResoucesData and getReplacedDom
-  const resoursesData = prepareResourcesData(
-    dom,
-    pageUrl.origin,
-    nameBasePart,
-    resoursesDirectory,
-  );
-
-  logger('Assets loading started');
-  const resources = await downloadResourses(resoursesData);
-  logger('Assets loading complited');
-  const changedDom = getReplacedDom(dom, resources, pageUrl.origin);
-  // console.log(changedDom.html());
-  logger('Assets saving is in the progress');
-  await saveContent(pathToSavedHtmlFile, changedDom.html());
-  const resourcePromises = resources.map((resource) => {
-    const { resourcePath, data } = resource;
-    const fullPath = path.join(directoryPath, resourcePath);
-    return saveContent(fullPath, data);
-  });
-  await Promise.all(resourcePromises);
-  logger('Assets saved successfully');
-  logger('The application finished');
-
-  return pathToSavedHtmlFile;
-};
+    .then(({ pageUrl, pageContent }) => {
+      logger('Page loaded successfully');
+      const resoursesData = prepareResourcesData(pageUrl, pageContent, directoryPath);
+      return resoursesData;
+    })
+    .then((resoursesData) => (
+      makeAssetsDirectory(resoursesData, directoryPath)
+        .then(() => {
+          logger('Directory for the assets created');
+          return resoursesData;
+        })
+    ))
+    .then((resoursesData) => {
+      logger('Assets loading started');
+      return downloadResourses(resoursesData);
+    })
+    .then((downloadedResourcesData) => {
+      logger('Assets loading complited');
+      logger('Assets saving is in the progress');
+      return saveContent(downloadedResourcesData, directoryPath)
+        .then((pathToSavedHtmlFile) => {
+          logger('Assets saved successfully');
+          logger('The application finished');
+          return pathToSavedHtmlFile;
+        });
+    })
+);
