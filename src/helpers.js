@@ -111,6 +111,8 @@ const makeAssetsDirectory = ({ assetsDirectoryName }, directoryPath) => (
     .then((assetsDirectoryPath) => mkdir(assetsDirectoryPath))
     .catch((error) => {
       logger('The following error was thrown: %O', error);
+      console.error(error);
+      console.log(`directoryPath = ${directoryPath}`);
       const message = makeErrorMessage(error, directoryPath);
       throw Error(message);
     })
