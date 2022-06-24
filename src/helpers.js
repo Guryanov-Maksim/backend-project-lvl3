@@ -14,22 +14,13 @@ import Listr from 'listr';
 
 const logger = debug('page-loader');
 
-// const schema = yup.string().url();
-const isValidUrl = (url) => {
-  try {
-    return new URL(url);
-  } catch (e) {
-    throw e;
-  }
-};
+const schema = yup.string().test('is-url-valid', 'URL is not valid', (value) => new URL(value));
 
-const schema = yup.string().test("is-url-valid", "URL is not valid", (value) => {
-  return isValidUrl(value);
-});
-
-const validateUrl = (url) => schema.validate(url).catch(() => {
-  throw Error(`Error: ${url.toString()} must be a valid URL`);
-});
+const validateUrl = (url) => schema.validate(url)
+  .then((validUrl) => validUrl)
+  .catch(() => {
+    throw Error(`Error: ${url.toString()} must be a valid URL`);
+  });
 
 const createName = (resourceUrl, nameBasePart) => {
   const [resourseName, extention = 'html'] = resourceUrl.pathname.split('.');
