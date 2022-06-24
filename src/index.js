@@ -6,7 +6,7 @@ import {
   saveContent,
   logger,
   downloadContent,
-} from './helpers';
+} from './helpers.js';
 
 /* *********************************
 Баг в том, что когда запускаешь дебагеры page-loader и axios одновременно,
