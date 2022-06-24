@@ -14,7 +14,18 @@ import Listr from 'listr';
 
 const logger = debug('page-loader');
 
-const schema = yup.string().url();
+// const schema = yup.string().url();
+const isValidUrl = (url) => {
+  try {
+    return new URL(url);
+  } catch (e) {
+    throw e;
+  }
+};
+
+const schema = yup.string().test("is-url-valid", "URL is not valid", (value) => {
+  return isValidUrl(value);
+});
 
 const validateUrl = (url) => schema.validate(url).catch(() => {
   throw Error(`Error: ${url.toString()} must be a valid URL`);
