@@ -54,8 +54,9 @@ const prepareResourcesData = (pageUrl, pageContent) => {
   // subdomains isn't loaded. It needs to fix it!!!!!!!!!
   const { origin } = pageUrl;
   const nameBasePart = pageUrl.hostname.split('.').join('-');
+  const assetsDirNamePart = pageUrl.pathname.split('/').join('-');
   const htmlFilename = createName(pageUrl, nameBasePart);
-  const assetsDirectoryName = `${nameBasePart}_files`;
+  const assetsDirectoryName = `${nameBasePart}${assetsDirNamePart}_files`;
   const dom = cheerio.load(pageContent);
   const assets = [];
   dom(assetTags.join(',')).each((i, element) => {
