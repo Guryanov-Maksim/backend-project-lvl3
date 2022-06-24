@@ -133,11 +133,9 @@ test('directory is not exist', async () => {
     });
 
   expect.assertions(1);
-  try {
-    await loadPageAndGetSavedPagePath(pageAddress, '/notExistDirectory');
-  } catch (e) {
-    expect(e.message).toMatch(expectedErrorMessage);
-  }
+  await expect(loadPageAndGetSavedPagePath(pageAddress, notExistDirectory))
+    .rejects
+    .toThrow(expectedErrorMessage);
 });
 
 test('No access', async () => {
@@ -152,11 +150,9 @@ test('No access', async () => {
     });
 
   expect.assertions(1);
-  try {
-    await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
-  } catch (e) {
-    expect(e.message).toMatch(expectedErrorMessage);
-  }
+  await expect(loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName))
+    .rejects
+    .toThrow(expectedErrorMessage);
 });
 
 test('Write in a file instead of a directory', async () => {
@@ -174,11 +170,9 @@ test('Write in a file instead of a directory', async () => {
     });
 
   expect.assertions(1);
-  try {
-    await loadPageAndGetSavedPagePath(pageAddress, pathToFile);
-  } catch (e) {
-    expect(e.message).toMatch(expectedErrorMessage);
-  }
+  await expect(loadPageAndGetSavedPagePath(pageAddress, pathToFile))
+    .rejects
+    .toThrow(expectedErrorMessage);
 });
 
 test('invalid page address', async () => {
@@ -186,11 +180,9 @@ test('invalid page address', async () => {
   const expectedErrorMessage = `Error: ${pageAddress} must be a valid URL`;
 
   expect.assertions(1);
-  try {
-    await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
-  } catch (e) {
-    expect(e.message).toMatch(expectedErrorMessage);
-  }
+  await expect(loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName))
+    .rejects
+    .toThrow(expectedErrorMessage);
 });
 
 test('cannot download assets', async () => {
@@ -212,11 +204,14 @@ test('cannot download assets', async () => {
   const expectedErrorMessage = `Request to ${requestedResourceUrl} failed with status code ${notFoundCode}`;
 
   expect.assertions(1);
-  try {
-    await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
-  } catch (e) {
-    expect(e.message).toMatch(expectedErrorMessage);
-  }
+  // try {
+  //   await loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName);
+  // } catch (e) {
+  //   expect(e.message).toMatch(expectedErrorMessage);
+  // }
+  await expect(loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName))
+    .rejects
+    .toThrow(expectedErrorMessage);
 });
 
 test('localhost should be valid', async () => {
