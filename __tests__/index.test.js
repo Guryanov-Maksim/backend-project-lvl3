@@ -218,3 +218,16 @@ test('cannot download assets', async () => {
     expect(e.message).toMatch(expectedErrorMessage);
   }
 });
+
+test('localhost should be valid', async () => {
+  const pageAddress = 'http://localhost';
+  const { origin } = new URL(pageAddress);
+
+  nock(origin)
+    .get('/')
+    .reply(200, expectedResult, {
+      'Content-Type': 'text/html',
+    });
+
+  await expect(loadPageAndGetSavedPagePath(pageAddress, tempDirectoryName)).resolves.not.toThrow();
+});
