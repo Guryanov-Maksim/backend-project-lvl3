@@ -37,7 +37,7 @@ page-loader The application finished +0ms
 Page was successfully downloaded into /ru-hexlet-io-courses.html
 */
 
-export default async (pageAddress, directoryPath) => (
+export default async (pageAddress, directoryPath = process.cwd()) => (
   Promise.resolve(logger('The application is running'))
     .then(() => validateUrl(pageAddress))
     .then((validPageAddress) => {
