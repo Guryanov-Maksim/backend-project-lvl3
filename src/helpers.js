@@ -14,6 +14,8 @@ import Listr from 'listr';
 
 const logger = debug('page-loader');
 
+// can't use yup.string().url() because of http://localhost. It is an invalid addres for yup
+// but hexlet tests use it as a page address
 const schema = yup.string().test('is-url-valid', 'URL is not valid', (value) => new URL(value));
 
 const validateUrl = (url) => schema.validate(url)
